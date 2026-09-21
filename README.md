@@ -1,213 +1,209 @@
 # M-Vave Tank-G Controller (`tank-g-controller`)
 
-Controlador via linha de comando (CLI) em Python para a pedaleira multi-efeitos **M-Vave (Cuvave) Tank-G** via USB-MIDI SysEx.
+Controlador desktop moderno em **PySide6 (Qt Widgets)** e interface via linha de comando (CLI) em Python para a pedaleira multi-efeitos **M-Vave (Cuvave) Tank-G** via USB-MIDI SysEx.
 
-Este projeto é fruto de **engenharia reversa completa** do protocolo de comunicação USB-MIDI do aplicativo oficial da M-Vave (`M-EFCS`), permitindo controlar, ajustar e salvar parâmetros do pedal programaticamente sem depender do software oficial.
+Este projeto é fruto de **engenharia reversa completa** do protocolo de comunicação USB-MIDI do aplicativo oficial da M-Vave (`M-EFCS`), permitindo controlar, ajustar e salvar parâmetros do pedal programaticamente e visualmente sem depender do software proprietário.
+
+---
+
+## 🏗️ Arquitetura do Software (MVVM)
+
+O projeto foi inteiramente refatorado para o padrão arquitetural **Model-View-ViewModel (MVVM)**, desacoplando o modelo de dados puro, o processamento de áudio/hardware e a camada gráfica:
+
+```
+┌────────────────────────────────────────────────────────┐
+│               View (PySide6 / Widgets)                 │
+│  - Janela Dark Theme moderna com controles táteis      │
+│  - Knobs vetoriais com leitura precisa e reset duplo   │
+│  - Footswitches metálicos com LED indicador de bypass  │
+│  - Matriz visual 9x4 de presets (36 slots)             │
+└───────────────────────────▲────────────────────────────┘
+                            │ Qt Signals & Slots
+                            │ (Data Binding Bidirecional)
+┌───────────────────────────▼────────────────────────────┐
+│              ViewModel (ControlViewModel)              │
+│  - Estado reativo com emissão de sinais                │
+│  - Debounce de 30ms para sliders (evita flood no MIDI) │
+│  - Supressão de Eco/Loopback                           │
+│  - Orquestração da gravação EEPROM (0x69 -> 0x41 -> 0x49)│
+└─────────────┬────────────────────────────┬─────────────┘
+              │ usa                        │ comanda I/O
+┌─────────────▼──────────────┐ ┌───────────▼─────────────┐
+│   Model (PedalState)       │ │  MidiService (QThread)  │
+│ - Dataclass Python puro    │ │ - Conexão não-bloqueante│
+│ - Zero dependência de Qt   │ │ - Auto-reconexão        │
+│ - Conversão de setores FX  │ │ - Tratamento WinMM Lock │
+│ - Serialização state.json  │ │   (m_efcs.exe conflito) │
+└────────────────────────────┘ └───────────┬─────────────┘
+                                           │ codifica / decodifica
+                               ┌───────────▼─────────────┐
+                               │  SysExCodec / ParamMap  │
+                               │ - 100% puro e funcional │
+                               │ - Fórmulas de Checksum  │
+                               │ - Empacotamento 7-bit   │
+                               │ - 19 Testes Unitários   │
+                               └─────────────────────────┘
+```
+
+### Estrutura de Pastas
+```
+tankg/
+├── tankg/                        # Pacote Python principal
+│   ├── core/                     # Constantes, modelos de amp, cabs e módulos
+│   ├── model/                    # Dataclasses puras (PedalState, Preset)
+│   ├── services/                 # SysExCodec, ParamMap (7-bit) e MidiService (QThread)
+│   ├── viewmodel/                # ControlViewModel (lógica de estado e debounce)
+│   ├── view/                     # Interface PySide6, Theme QSS e Widgets customizados
+│   └── cli/                      # Interface de terminal (CLI desacoplada)
+├── tests/                        # 19 testes automatizados com pytest (offline)
+├── main.py                       # Ponto de entrada direto para a GUI
+├── tankg.py                      # Wrapper com compatibilidade retroativa para CLI e GUI
+└── requirements.txt              # Dependências (mido, python-rtmidi, PySide6, pytest)
+```
 
 ---
 
 ## 🎸 Funcionalidades Suportadas
 
+- **Interface Gráfica Completa (PySide6):**
+  - Painéis modulares com código de cores: **GATE & CAB**, **PREAMP / AMP**, **MODULATION**, **DELAY** e **REVERB**.
+  - Knobs rotativos vetoriais com controle por arrasto vertical, roda do mouse e duplo clique para reset.
+  - Footswitches com LEDs verdes acesos para módulos ativos e apagados em bypass.
 - **Seleção e Troca de Presets (36 Presets):**
-  - Navegação entre todos os 9 Bancos e 4 Slots (**1A a 9D**).
+  - Navegação instantânea pelos 9 Bancos e 4 Slots (**1A a 9D**).
 - **Gravação Persistente na EEPROM:**
-  - Salva o som atual diretamente na memória permanente do pedal (`save`).
+  - Salva o preset atual ou qualquer preset de destino diretamente na memória permanente do pedal (`0x69`).
 - **Módulo de Pré-amplificador (AMP):**
   - 9 Modelos de amplificadores clássicos (VOX AC30, Twin Reverb, Bogner, Plexi, JCM800, 5150, Powerball, Dual Rectifier).
   - Ajustes de equalização: `gain`, `treble`, `middle`, `bass` e `volume` (`0 a 100`).
 - **Módulo de Modulação (MOD):**
-  - Seleção contínua entre **Chorus**, **Phaser** e **Tremolo** (`1 a 40`).
+  - Seleção entre **Chorus**, **Phaser** e **Tremolo** (`1 a 40`).
   - Velocidade da modulação: `speed` (`0 a 100`).
 - **Módulo de Delay (DLY):**
-  - Seleção contínua entre **Analog Delay**, **Tape Delay** e **Dual Delay** (`1 a 40`).
+  - Seleção entre **Analog Delay**, **Tape Delay** e **Dual Delay** (`1 a 40`).
   - Tempo / Feedback: `delay-time` (`0 a 100`).
 - **Módulo de Reverb (REV):**
-  - Seleção contínua entre **Room Reverb**, **Spring Reverb** e **Cloud Reverb** (`1 a 40`).
-  - Proporção da mistura: `reverb-mix` (`0 a 100`).
+  - Seleção entre **Room Reverb**, **Spring Reverb** e **Cloud Reverb** (`1 a 40`).
+  - Mistura: `reverb-mix` (`0 a 100`).
 - **Módulo de Dinâmica & Gabinetes:**
-  - **Noise Gate:** `0 a 100` (desativa todo para a esquerda).
+  - **Noise Gate:** `0 a 100` (desativado em zero).
   - **Simulações de Gabinete (IR CAB):** Slots `0 a 8` (0 = Bypass, 1 a 8 = Gabinetes).
 - **Ativação / Desativação de Módulos (Bypass):**
   - Liga ou desliga individualmente os blocos: `amp`, `mod`, `dly` e `rev`.
-- **Persistência de Estado Local:**
-  - Mantém o estado atual em `state.json` para que o ajuste de um único botão não resete as outras configurações.
 
 ---
 
-## 🛠️ Requisitos e Instalação
+## 🛠️ Instalação e Execução
 
-### Requisitos:
-- Python 3.10 ou superior
-- Cabo USB-C conectando a Tank-G ao computador
+### 1. Clonar e Configurar Ambiente
 
-### Instalação:
-
-1. Clone o repositório:
 ```bash
 git clone https://github.com/AlexandreTonin/tank-g-controller.git
 cd tank-g-controller
-```
 
-2. Crie e ative um ambiente virtual:
-```bash
-# Windows PowerShell
+# Criar e ativar ambiente virtual
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
 
-3. Instale as dependências:
-```bash
+# Instalar dependências
 pip install -r requirements.txt
 ```
 
-> **⚠️ IMPORTANTE (Windows):**  
-> A API MIDI do Windows (WinMM) exige acesso exclusivo à porta MIDI. Certifique-se de **fechar o software oficial (`m_efcs.exe`)**, DAWs ou navegadores com acesso MIDI antes de rodar os comandos do script.
+### 2. Abrir a Interface Gráfica (GUI)
 
----
-
-## 💻 Guia de Uso da Linha de Comando (CLI)
-
-### Status e Portas
+Execute qualquer um dos comandos abaixo:
 ```bash
-# Listar portas MIDI disponíveis no sistema
-python tankg.py list
-
-# Exibir o status de todos os parâmetros atualmente salvos
-python tankg.py status
+python main.py
+# ou
+python tankg.py
 ```
 
-### Presets e Bancos
+### 3. Executar a Suíte de Testes Automatizados
+
+O projeto inclui testes de unidade cobrindo todas as fórmulas matemáticas e codecs de bits sem precisar do pedal conectado:
 ```bash
-# Listar todos os 36 presets disponíveis
-python tankg.py preset list
-
-# Trocar de preset por nome (banco + letra)
-python tankg.py preset 3B
-python tankg.py 3b             # atalho direto
-python tankg.py 4a
-
-# Trocar de preset por número sequencial (1 a 36)
-python tankg.py preset 10      # seleciona o 3B
-
-# Gravar a configuração atual na memória EEPROM do pedal
-python tankg.py save 3B        # salva no slot 3B
-python tankg.py save           # salva no slot atual
-```
-
-### Ativação e Bypass de Efeitos
-```bash
-python tankg.py amp on         # liga o pré-amplificador
-python tankg.py amp off        # desliga (bypass) o pré-amplificador
-python tankg.py mod on         # liga o bloco de modulação
-python tankg.py dly off        # desliga o delay
-python tankg.py rev on         # liga o reverb
-```
-
-### Pré-amplificador (AMP)
-```bash
-# Listar modelos de amplificador
-python tankg.py type list
-
-# Escolher modelo de amplificador (1 a 9)
-python tankg.py type 1         # VOX AC30HW
-python tankg.py type 7         # EVH 5150 LEAD
-
-# Ajustar equalização e ganho (0 a 100)
-python tankg.py gain 75
-python tankg.py treble 50
-python tankg.py middle 45
-python tankg.py bass 60
-python tankg.py volume 80
-```
-
-### Modulação (MOD)
-```bash
-# Selecionar efeito e intensidade (1 a 40)
-python tankg.py chorus 20      # Chorus (Mix: 20/40)
-python tankg.py phaser 35      # Phaser (Depth: 35/40)
-python tankg.py tremolo 15     # Tremolo (Mix: 15/40)
-
-# Velocidade da oscilação (0 a 100)
-python tankg.py speed 65
-```
-
-### Delay (DLY)
-```bash
-# Selecionar algoritmo e intensidade (1 a 40)
-python tankg.py delay-analog 20 # Analog Delay (Mix: 20/40)
-python tankg.py delay-tape 25   # Tape Delay (Mix: 25/40)
-python tankg.py delay-dual 15   # Dual Delay (Mix: 15/40)
-
-# Tempo de atraso / repetições (0 a 100)
-python tankg.py delay-time 50
-```
-
-### Reverb (REV)
-```bash
-# Selecionar algoritmo e cauda (1 a 40)
-python tankg.py reverb-room 20   # Room Reverb (Decay: 20/40)
-python tankg.py reverb-spring 25 # Spring Reverb (Decay: 25/40)
-python tankg.py reverb-cloud 30  # Cloud Reverb (Decay: 30/40)
-
-# Quantidade de mistura de Reverb (0 a 100)
-python tankg.py reverb-mix 45
-```
-
-### Noise Gate e Simulações de Gabinete (IR CAB)
-```bash
-# Ajustar o Noise Gate (0 a 100)
-python tankg.py gate 35
-
-# Listar gabinetes disponíveis
-python tankg.py cab list
-
-# Selecionar gabinete (0 a 8)
-python tankg.py cab 1          # VHT Deliverance (4x12)
-python tankg.py cab 4          # Mesa Boogie (4x12)
-python tankg.py cab 0          # Desliga o IR CAB (Bypass)
+pytest -v
 ```
 
 ---
 
-## 🔬 Arquitetura do Protocolo SysEx
+## 💻 Uso via Linha de Comando (CLI)
 
-Toda a documentação técnica da engenharia reversa com capturas e fórmulas matemáticas está registrada em [context.md](context.md).
+O arquivo `tankg.py` mantém compatibilidade total com automações e uso via terminal:
 
-### Resumo dos Comandos SysEx da Tank-G:
-| Comando | Tamanho | Função | Estrutura Básica |
-| :---: | :---: | :--- | :--- |
-| `0x31` | 36 bytes | **Ajuste em Tempo Real** | Bitstream de 13 campos empacotado em 15 blocos de 7 bits MIDI |
-| `0x49` | 21 bytes | **Bypass e Troca de Presets** | Comando de registradores (`0x11` para bypass, `0x1E` para presets) |
-| `0x69` | 44 bytes | **Gravação EEPROM do Preset** | Escreve os 21 bytes do preset no offset `preset_id * 21 + 2` |
+```bash
+# Diagnóstico e Consulta
+python tankg.py list             # Lista portas MIDI disponíveis
+python tankg.py status           # Exibe o status atual de todos os parâmetros
+python tankg.py preset list      # Lista os 36 presets (1A a 9D)
+python tankg.py type list        # Lista os 9 modelos de amplificador
+python tankg.py cab list         # Lista os slots de IR Cab
 
-### Fórmulas Mestre dos Checksums:
+# Troca e Gravação de Presets
+python tankg.py preset 3B        # Seleciona o preset 3B (ou número 10)
+python tankg.py 3B               # Atalho direto para trocar de preset
+python tankg.py save 3B          # Grava configuração atual na EEPROM do preset 3B
 
-- **Preset em Tempo Real (Comando `0x31`):**
-  ```text
-  ck = (211 - soma_dos_parametros) % 256
-  ck1 = ck & 0x7F
-  ck2 = (ck >> 7) & 0x7F
-  ```
-  *(Onde `soma_dos_parametros` = type + gain + treble + middle + bass + volume + mod_fx + mod_speed + dly_mix + dly_time + rev_decay + rev_mix)*
+# Controle do Amplificador
+python tankg.py type 6           # Marshall JCM800
+python tankg.py gain 85          # Ajusta ganho para 85%
+python tankg.py treble 65        # Ajusta agudos
+python tankg.py middle 50        # Ajusta médios
+python tankg.py bass 60          # Ajusta graves
+python tankg.py volume 70        # Ajusta volume
 
-- **Troca de Preset (Comando `0x49`):**
-  ```text
-  ck = (50 - 2 * preset_id) % 256
-  ck1 = ck & 0x7F
-  ck2 = (ck >> 7) & 0x7F
-  ```
-  *(Onde `preset_id` varia de 0 para 1A até 35 para 9D)*
+# Efeitos e Dinâmica
+python tankg.py chorus 25        # Chorus no nível 25/40
+python tankg.py delay-tape 30    # Tape Delay no nível 30/40
+python tankg.py delay-time 55    # Tempo do Delay
+python tankg.py reverb-room 20   # Room Reverb no nível 20/40
+python tankg.py gate 40          # Noise Gate em 40%
+python tankg.py cab 1            # Gabinete VHT Deliverance (4x12)
 
-- **Gravação na EEPROM (Comando `0x69`):**
-  ```text
-  offset = preset_id * 21 + 2
-  ck = (230 - soma_dos_21_campos - offset) % 256
-  ck1 = ck & 0x7F
-  ck2 = (ck >> 7) & 0x7F
-  ```
+# Bypass de Módulos
+python tankg.py amp off          # Desativa módulo de amplificador
+python tankg.py mod on           # Ativa módulo de modulação
+```
+
+---
+
+## 🔬 Protocolo MIDI SysEx Decifrado
+
+### Identificador de Fabricante
+Todas as mensagens SysEx da M-Vave iniciam com o cabeçalho:
+`F0 00 32 09 ... F7`
+
+### 1. Preset em Tempo Real (Comando `0x31` - 36 bytes)
+Os 12 parâmetros são multiplicados por 2, empacotados em grupos de 7 bits (bytes 18 a 32), e o checksum de 14 bits obedece à fórmula:
+$$\mathbf{params\_sum} = \text{type} + \text{gain} + \text{treble} + \text{middle} + \text{bass} + \text{volume} + \text{mod\_fx} + \text{mod\_speed} + \text{dly\_mix} + \text{dly\_time} + \text{rev\_decay} + \text{rev\_mix}$$
+$$\mathbf{ck} = (211 - \mathbf{params\_sum}) \pmod{256}$$
+$$\mathbf{ck_1} = \mathbf{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\mathbf{ck} \gg 7) \ \& \ 0x7F$$
+
+### 2. Bypass de Módulos (Comando `0x49`, Sub-registro `0x11`)
+- IDs: `AMP = 0`, `MOD = 1`, `DLY = 2`, `REV = 3`
+- Estado: `0 = Bypass / Desligado`, `1 = Ativo / Ligado`
+$$\mathbf{ck_1} = 0x54 - 2 \times \text{mod\_id} - 2 \times \text{state}, \quad \mathbf{ck_2} = 0x03$$
+
+### 3. Troca de Preset (Comando `0x49`, Sub-registro `0x1E`)
+Para o ID interno do preset de `0` a `35` (onde $0 = 1A$ e $35 = 9D$):
+$$\mathbf{ck} = (50 - 2 \times \text{preset\_id}) \pmod{256}$$
+$$\mathbf{ck_1} = \mathbf{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\mathbf{ck} \gg 7) \ \& \ 0x7F$$
+
+### 4. Gravação na Memória EEPROM (Comando `0x69` - 44 bytes)
+Grava os 21 bytes de parâmetros no endereço de offset específico daquele preset:
+$$\text{offset} = \text{preset\_id} \times 21 + 2$$
+$$\mathbf{ck} = (230 - \sum_{i=0}^{20} \text{field}_i - \text{offset}) \pmod{256}$$
+$$\mathbf{ck_1} = \mathbf{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\mathbf{ck} \gg 7) \ \& \ 0x7F$$
+Logo em seguida, o controlador envia um comando de flush (`0x41`) e a troca para o próprio preset (`0x49`) para que o pedal recarregue a memória flash.
+
+---
+
+## ⚠️ Dica Importante para Windows
+No Windows, os drivers de áudio/MIDI (WinMM) operam em modo de **acesso exclusivo**. Para conectar o controlador à Tank-G:
+1. Certifique-se de que o software proprietário da M-Vave (`m_efcs.exe`) está **fechado**.
+2. Certifique-se de que nenhuma DAW (Reaper, FL Studio, etc.) está travando a porta `USB-Midi 1`.
 
 ---
 
 ## 📄 Licença
-
-Este projeto é disponibilizado para fins educacionais e de interoperabilidade livre.
+Distribuído sob a licença MIT. Criado para a comunidade de guitarristas e entusiastas de áudio.

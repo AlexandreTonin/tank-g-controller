@@ -5,13 +5,17 @@
   "middle": 50,
   "bass": 60,
   "volume": 50,
+  "amp_on": 1,
   "mod_fx": 122,
   "mod_speed": 80,
+  "mod_on": 0,
   "dly_mix": 107,
   "dly_time": 51,
+  "dly_on": 0,
   "rev_decay": 19,
   "rev_mix": 43,
-  "preset": "3B",
+  "rev_on": 1,
   "gate": 0,
-  "cab": 1
+  "cab": 1,
+  "preset": "1A"
 }
