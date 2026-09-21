@@ -56,3 +56,88 @@ class AIPresetResponse(BaseModel):
     # Dinâmica & Gabinete
     gate: int = Field(default=0, description="Noise Gate (0 a 100). Usar valores moderados/altos para alto ganho")
     cab: int = Field(default=1, description="Simulação de Gabinete IR (0 a 8): 0=Bypass, 1=VHT 4x12, 2=Sperimental 4x12, 3=Electrovoice 2x10, 4=Mesa 4x12, 5=Fender Champ 1x8, 6=Fender Pro Jr 1x10, 7=Marshall 1960 V30 4x12, 8=Diezel V30 4x12")
+
+
+AI_PRESET_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "is_audio_tone_request": {
+            "type": "boolean",
+            "description": "True se o prompt for uma solicitação válida de timbre/som para guitarra. False se for assunto fora de escopo.",
+        },
+        "refusal_reason": {
+            "type": "string",
+            "description": "Explicação educada caso a solicitação não seja sobre timbres ou música.",
+        },
+        "preset_name_suggestion": {
+            "type": "string",
+            "description": "Nome curto e marcante para o preset (ex: 'Dani Lead', 'JCM Rock', 'Warm Clean').",
+        },
+        "musical_explanation": {
+            "type": "string",
+            "description": "Explicação técnica/musical das decisões tomadas (escolha de amp, EQ, saturação, efeitos e captador sugerido).",
+        },
+        "amp_type": {
+            "type": "integer",
+            "description": "Modelo de Amp (1 a 9): 1=VOX AC30 Clean, 2='65 Twin Clean, 3=Bogner Shiva OD, 4=JTM45 OD, 5=Plexi 100 Rock, 6=JCM800 Hard Rock, 7=5150 Lead, 8=Powerball Modern, 9=Dual Rectifier Metal",
+        },
+        "gain": {"type": "integer", "description": "Ganho de entrada do amplificador (0 a 100)"},
+        "treble": {"type": "integer", "description": "Agudos (0 a 100)"},
+        "middle": {"type": "integer", "description": "Médios (0 a 100)"},
+        "bass": {"type": "integer", "description": "Graves (0 a 100)"},
+        "volume": {"type": "integer", "description": "Volume do amplificador (0 a 100)"},
+        "amp_on": {"type": "boolean", "description": "True para módulo AMP ativo, False para bypass"},
+        "mod_type": {
+            "type": "string",
+            "enum": ["chorus", "phaser", "tremolo"],
+            "description": "Tipo de modulação: chorus, phaser ou tremolo",
+        },
+        "mod_val": {"type": "integer", "description": "Nível/Mix/Depth da modulação no setor (1 a 40)"},
+        "mod_speed": {"type": "integer", "description": "Velocidade da modulação (0 a 100)"},
+        "mod_on": {"type": "boolean", "description": "True para módulo MOD ativo, False para bypass"},
+        "dly_type": {
+            "type": "string",
+            "enum": ["analog", "tape", "dual"],
+            "description": "Tipo de delay: analog, tape ou dual",
+        },
+        "dly_val": {"type": "integer", "description": "Mix do delay no sinal (1 a 40)"},
+        "dly_time": {"type": "integer", "description": "Tempo / repetições do delay (0 a 100)"},
+        "dly_on": {"type": "boolean", "description": "True para módulo DELAY ativo, False para bypass"},
+        "rev_type": {
+            "type": "string",
+            "enum": ["room", "spring", "cloud"],
+            "description": "Tipo de reverb: room, spring ou cloud",
+        },
+        "rev_val": {"type": "integer", "description": "Decay / ambiência do reverb (1 a 40)"},
+        "rev_mix": {"type": "integer", "description": "Mistura do reverb no sinal (0 a 100)"},
+        "rev_on": {"type": "boolean", "description": "True para módulo REVERB ativo, False para bypass"},
+        "gate": {"type": "integer", "description": "Noise Gate (0 a 100). Usar valores moderados/altos para alto ganho"},
+        "cab": {"type": "integer", "description": "Simulação de Gabinete IR (0 a 8)"},
+    },
+    "required": [
+        "is_audio_tone_request",
+        "preset_name_suggestion",
+        "musical_explanation",
+        "amp_type",
+        "gain",
+        "treble",
+        "middle",
+        "bass",
+        "volume",
+        "amp_on",
+        "mod_type",
+        "mod_val",
+        "mod_speed",
+        "mod_on",
+        "dly_type",
+        "dly_val",
+        "dly_time",
+        "dly_on",
+        "rev_type",
+        "rev_val",
+        "rev_mix",
+        "rev_on",
+        "gate",
+        "cab",
+    ],
+}

@@ -11,11 +11,12 @@ from typing import Optional, Tuple
 from google import genai
 from pydantic import ValidationError
 
-from ..model.ai_preset import AIPresetResponse
+from ..model.ai_preset import AIPresetResponse, AI_PRESET_RESPONSE_SCHEMA
 from ..model.pedal_state import PedalState
 from .preset_validator import PresetValidator, OutOfDomainPromptError
 
 CONFIG_FILE = Path.cwd() / "config.json"
+
 
 SYSTEM_INSTRUCTION = """
 Você é o mais conceituado Engenheiro de Áudio e Especialista em Timbres de Guitarra do mundo, com foco EXCLUSIVO na pedaleira multi-efeitos M-Vave (Cuvave) Tank-G.
@@ -140,7 +141,7 @@ class GeminiPresetService:
                 response_format={
                     "type": "text",
                     "mime_type": "application/json",
-                    "schema": AIPresetResponse.model_json_schema(),
+                    "schema": AI_PRESET_RESPONSE_SCHEMA,
                 },
             )
 
@@ -148,7 +149,21 @@ class GeminiPresetService:
             if not raw_text:
                 raise RuntimeError("O modelo Gemini retornou uma resposta vazia.")
 
-            ai_data = AIPresetResponse.model_validate_json(raw_text)
+            cleaned_text = raw_text.strip()
+            if cleaned_text.startswith("```"):
+                lines = cleaned_text.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                cleaned_text = "\n".join(lines).strip()
+
+            try:
+                parsed_json = json.loads(cleaned_text)
+            except Exception as json_err:
+                raise RuntimeError(f"O modelo retornou um JSON malformado: {json_err}\nConteúdo recebido: {cleaned_text[:200]}")
+
+            ai_data = AIPresetResponse.model_validate(parsed_json)
             return PresetValidator.validate_and_build(ai_data)
 
         except OutOfDomainPromptError:
@@ -157,3 +172,4 @@ class GeminiPresetService:
             raise RuntimeError(f"A resposta da IA não respeitou o formato esperado: {e}")
         except Exception as e:
             raise RuntimeError(f"Erro na comunicação com a API Gemini: {e}")
+
