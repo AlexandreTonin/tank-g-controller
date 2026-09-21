@@ -181,12 +181,30 @@ Toda a documentação técnica da engenharia reversa com capturas e fórmulas ma
 | `0x69` | 44 bytes | **Gravação EEPROM do Preset** | Escreve os 21 bytes do preset no offset `preset_id * 21 + 2` |
 
 ### Fórmulas Mestre dos Checksums:
+
 - **Preset em Tempo Real (Comando `0x31`):**
-  $$\mathbf{ck} = (211 - \sum \text{parâmetros}) \pmod{256}$$
+  ```text
+  ck = (211 - soma_dos_parametros) % 256
+  ck1 = ck & 0x7F
+  ck2 = (ck >> 7) & 0x7F
+  ```
+  *(Onde `soma_dos_parametros` = type + gain + treble + middle + bass + volume + mod_fx + mod_speed + dly_mix + dly_time + rev_decay + rev_mix)*
+
 - **Troca de Preset (Comando `0x49`):**
-  $$\mathbf{ck} = (50 - 2 \times \text{preset\_id}) \pmod{256}$$
+  ```text
+  ck = (50 - 2 * preset_id) % 256
+  ck1 = ck & 0x7F
+  ck2 = (ck >> 7) & 0x7F
+  ```
+  *(Onde `preset_id` varia de 0 para 1A até 35 para 9D)*
+
 - **Gravação na EEPROM (Comando `0x69`):**
-  $$\mathbf{ck} = (230 - \sum \text{campos} - \text{offset}) \pmod{256}$$
+  ```text
+  offset = preset_id * 21 + 2
+  ck = (230 - soma_dos_21_campos - offset) % 256
+  ck1 = ck & 0x7F
+  ck2 = (ck >> 7) & 0x7F
+  ```
 
 ---
 
