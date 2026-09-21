@@ -1,0 +1,17 @@
+{
+  "type": 1,
+  "gain": 80,
+  "treble": 50,
+  "middle": 50,
+  "bass": 60,
+  "volume": 50,
+  "mod_fx": 122,
+  "mod_speed": 80,
+  "dly_mix": 107,
+  "dly_time": 51,
+  "rev_decay": 19,
+  "rev_mix": 43,
+  "preset": "3B",
+  "gate": 0,
+  "cab": 1
+}
