@@ -15,6 +15,8 @@ from .sysex_codec import (
     parse_sysex,
 )
 from .midi_service import MidiService
+from .preset_validator import PresetValidator, OutOfDomainPromptError
+from .gemini_preset_service import GeminiPresetService, get_active_api_key, save_api_key
 
 __all__ = [
     "pack_7bit",
@@ -30,4 +32,9 @@ __all__ = [
     "build_eeprom_flush_sysex",
     "parse_sysex",
     "MidiService",
+    "PresetValidator",
+    "OutOfDomainPromptError",
+    "GeminiPresetService",
+    "get_active_api_key",
+    "save_api_key",
 ]

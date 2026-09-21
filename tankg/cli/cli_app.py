@@ -57,6 +57,7 @@ Uso:
     python tankg.py preset <1A-9D|1-36> # seleciona preset do pedal (ex: 3B ou 10)
     python tankg.py preset list         # lista todos os 36 presets (1A a 9D)
     python tankg.py save [slot]         # grava config atual na EEPROM do pedal (ex: save 3B)
+    python tankg.py ai "<prompt>"       # cria timbre com IA (ex: ai "Dani California" --slot 3B --save)
     python tankg.py raw F0 00 ...       # envia bytes SysEx crus (incluir F0 e F7)
 """
 
@@ -88,6 +89,12 @@ def send_sysex_cli(port_name: str, data_bytes: List[int]):
 
 
 def run_cli(args: List[str] = None):
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     if args is None:
         args = sys.argv[1:]
 
@@ -149,6 +156,96 @@ def run_cli(args: List[str] = None):
         for b in range(1, 10):
             slots = [f"{b}{s} (#{((b-1)*4 + i + 1):02d})" for i, s in enumerate("ABCD")]
             print(f"  Banco {b}: " + "  ".join(slots))
+        return
+
+    # Comando do Agente de IA (Gemini)
+    if cmd in ("ai", "gemini", "tone"):
+        if len(args) < 2:
+            print('Uso: python tankg.py ai "<descrição do timbre>" [--slot <1A-9D>] [--save]')
+            print('Exemplo: python tankg.py ai "timbre do solo de Stairway to Heaven" --slot 3B --save')
+            return
+
+        raw_args = args[1:]
+        target_slot = None
+        do_save = False
+        prompt_parts = []
+
+        i = 0
+        while i < len(raw_args):
+            arg = raw_args[i]
+            if arg in ("--slot", "-s") and i + 1 < len(raw_args):
+                target_slot = raw_args[i + 1]
+                i += 2
+            elif arg in ("--save", "-w"):
+                do_save = True
+                i += 1
+            else:
+                prompt_parts.append(arg)
+                i += 1
+
+        prompt = " ".join(prompt_parts).strip()
+        if not prompt:
+            print("Erro: Forneça um texto descrevendo o timbre desejado.")
+            return
+
+        print(f'\nConsultando o Gemini AI para criar o timbre: "{prompt}"...')
+        from ..services.gemini_preset_service import GeminiPresetService
+        from ..services.preset_validator import OutOfDomainPromptError
+
+        service = GeminiPresetService()
+        try:
+            new_state, suggestion_name, explanation = service.generate_preset(prompt)
+        except OutOfDomainPromptError as e:
+            print(f"\n[RECUSA DA IA] {e.message}\n")
+            return
+        except Exception as e:
+            print(f"\n[ERRO] Falha ao consultar a API Gemini: {e}\n")
+            return
+
+        print("\n" + "=" * 60)
+        print(f"✨ TIMBRE GERADO: [{suggestion_name.upper()}]")
+        print("=" * 60)
+        print(f"Explicação:\n  {explanation}\n")
+        print("Parâmetros do Hardware:")
+        print(f"  Amp Model : [{new_state.type}] {AMP_NAMES.get(new_state.type)}")
+        print(f"  Gain / Vol: Gain {new_state.gain}% | Vol {new_state.volume}%")
+        print(f"  EQ        : Treble {new_state.treble}% | Mid {new_state.middle}% | Bass {new_state.bass}%")
+        mtype, mval = new_state.mod_info
+        print(f"  MOD       : {'[ATIVO]' if new_state.mod_on else '[BYPASS]'} {mtype.capitalize()} ({mval}/40) | Speed: {new_state.mod_speed}%")
+        dtype, dval = new_state.dly_info
+        print(f"  DELAY     : {'[ATIVO]' if new_state.dly_on else '[BYPASS]'} {dtype.capitalize()} ({dval}/40) | Time: {new_state.dly_time}%")
+        rtype, rval = new_state.rev_info
+        print(f"  REVERB    : {'[ATIVO]' if new_state.rev_on else '[BYPASS]'} {rtype.capitalize()} ({rval}/40) | Mix: {new_state.rev_mix}%")
+        print(f"  Noise Gate: {new_state.gate}%")
+        print(f"  IR Cab    : [{new_state.cab}] {CAB_NAMES.get(new_state.cab)}")
+        print("=" * 60)
+
+        # Transmite se houver conexão
+        port_name = find_tankg_port()
+        if port_name:
+            print(f"\nTransmitindo parâmetros para a pedaleira em '{port_name}'...")
+            send_sysex_cli(port_name, build_preset_param_sysex(new_state))
+            send_sysex_cli(port_name, build_gate_sysex(new_state.gate))
+            send_sysex_cli(port_name, build_cab_sysex(new_state.cab))
+            send_sysex_cli(port_name, build_module_bypass_sysex("amp", bool(new_state.amp_on)))
+            send_sysex_cli(port_name, build_module_bypass_sysex("mod", bool(new_state.mod_on)))
+            send_sysex_cli(port_name, build_module_bypass_sysex("dly", bool(new_state.dly_on)))
+            send_sysex_cli(port_name, build_module_bypass_sysex("rev", bool(new_state.rev_on)))
+
+            if do_save:
+                slot = target_slot if target_slot else new_state.preset
+                pid = parse_preset_name(slot)
+                pname = get_preset_name(pid)
+                print(f"Gravando na memória EEPROM do Preset [{pname}] (#{pid + 1}/36)...")
+                send_sysex_cli(port_name, build_eeprom_save_sysex(pid, new_state))
+                send_sysex_cli(port_name, build_eeprom_flush_sysex())
+                send_sysex_cli(port_name, build_preset_switch_sysex(pid))
+                print(f"✅ Preset [{pname}] gravado com sucesso na pedaleira!")
+            else:
+                print("🎵 Timbre ativo em tempo real no pedal! (Toque sua guitarra para testar)")
+                print("Dica: Use '--save --slot <1A-9D>' para gravar permanentemente na EEPROM.")
+
+        new_state.save_to_file(state_path)
         return
 
     port_name = find_tankg_port()

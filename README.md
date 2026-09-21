@@ -13,6 +13,7 @@ O projeto foi inteiramente refatorado para o padrão arquitetural **Model-View-V
 ```
 ┌────────────────────────────────────────────────────────┐
 │               View (PySide6 / Widgets)                 │
+│  - Gemini AI Tone Crafter (Prompt + Sugestões rápidas) │
 │  - Janela Dark Theme moderna com controles táteis      │
 │  - Knobs vetoriais com leitura precisa e reset duplo   │
 │  - Footswitches metálicos com LED indicador de bypass  │
@@ -22,26 +23,24 @@ O projeto foi inteiramente refatorado para o padrão arquitetural **Model-View-V
                             │ (Data Binding Bidirecional)
 ┌───────────────────────────▼────────────────────────────┐
 │              ViewModel (ControlViewModel)              │
-│  - Estado reativo com emissão de sinais                │
-│  - Debounce de 30ms para sliders (evita flood no MIDI) │
-│  - Supressão de Eco/Loopback                           │
-│  - Orquestração da gravação EEPROM (0x69 -> 0x41 -> 0x49)│
+│  - Orquestra IA, debouncing e supressão de eco         │
+│  - Thread assíncrona para chamadas ao Gemini           │
+│  - Gravação EEPROM em 3 passos (0x69 -> 0x41 -> 0x49)  │
 └─────────────┬────────────────────────────┬─────────────┘
               │ usa                        │ comanda I/O
 ┌─────────────▼──────────────┐ ┌───────────▼─────────────┐
 │   Model (PedalState)       │ │  MidiService (QThread)  │
 │ - Dataclass Python puro    │ │ - Conexão não-bloqueante│
-│ - Zero dependência de Qt   │ │ - Auto-reconexão        │
+│ - AIPresetResponse Schema  │ │ - Auto-reconexão        │
 │ - Conversão de setores FX  │ │ - Tratamento WinMM Lock │
-│ - Serialização state.json  │ │   (m_efcs.exe conflito) │
 └────────────────────────────┘ └───────────┬─────────────┘
-                                           │ codifica / decodifica
+                                           │
                                ┌───────────▼─────────────┐
-                               │  SysExCodec / ParamMap  │
-                               │ - 100% puro e funcional │
-                               │ - Fórmulas de Checksum  │
-                               │ - Empacotamento 7-bit   │
-                               │ - 19 Testes Unitários   │
+                               │     Camada de Serviços  │
+                               │ - GeminiPresetService   │
+                               │ - PresetValidator/Clamp │
+                               │ - SysExCodec (Checksum) │
+                               │ - 25 Testes Automatizados│
                                └─────────────────────────┘
 ```
 
@@ -50,23 +49,29 @@ O projeto foi inteiramente refatorado para o padrão arquitetural **Model-View-V
 tankg/
 ├── tankg/                        # Pacote Python principal
 │   ├── core/                     # Constantes, modelos de amp, cabs e módulos
-│   ├── model/                    # Dataclasses puras (PedalState, Preset)
-│   ├── services/                 # SysExCodec, ParamMap (7-bit) e MidiService (QThread)
-│   ├── viewmodel/                # ControlViewModel (lógica de estado e debounce)
-│   ├── view/                     # Interface PySide6, Theme QSS e Widgets customizados
-│   └── cli/                      # Interface de terminal (CLI desacoplada)
-├── tests/                        # 19 testes automatizados com pytest (offline)
+│   ├── model/                    # Dataclasses puras (PedalState, Preset, AIPresetResponse)
+│   ├── services/                 # GeminiPresetService, PresetValidator, SysExCodec, MidiService
+│   ├── viewmodel/                # ControlViewModel (estado reativo, IA worker, debounce)
+│   ├── view/                     # PySide6 Widgets (AITonePanel, RotaryKnob, MainWindow)
+│   └── cli/                      # Interface de terminal (CLI com comando ai)
+├── tests/                        # 25 testes automatizados com pytest (offline)
 ├── main.py                       # Ponto de entrada direto para a GUI
 ├── tankg.py                      # Wrapper com compatibilidade retroativa para CLI e GUI
-└── requirements.txt              # Dependências (mido, python-rtmidi, PySide6, pytest)
+└── requirements.txt              # Dependências (google-genai, pydantic, PySide6, pytest, mido)
 ```
 
 ---
 
 ## 🎸 Funcionalidades Suportadas
 
+- **✨ Gemini AI Tone Crafter (Feature Principal):**
+  - Crie presets a partir de linguagem natural livre (ex: *"Timbre do solo de Dani California"*, *"Overdrive cremoso estilo Stevie Ray Vaughan"*, *"Clean estalado com chorus para funk"*).
+  - O agente interpreta a intenção tonal, recomenda captadores da guitarra e escolhe exatamente o amplificador, equalização, ganho e efeitos compatíveis com a pedaleira.
+  - Saída 100% estruturada via JSON Schema rígido (Pydantic).
+  - Validador defensivo que nunca confia cegamente na IA, clampeando e normalizando os valores nos limites mecânicos do pedal.
+  - Teste imediato em tempo real no pedal sem sobrescrever a memória permanente ou gravação direta na EEPROM do slot desejado.
 - **Interface Gráfica Completa (PySide6):**
-  - Painéis modulares com código de cores: **GATE & CAB**, **PREAMP / AMP**, **MODULATION**, **DELAY** e **REVERB**.
+  - Painéis modulares com código de cores: **AI TONE CRAFTER**, **GATE & CAB**, **PREAMP / AMP**, **MODULATION**, **DELAY** e **REVERB**.
   - Knobs rotativos vetoriais com controle por arrasto vertical, roda do mouse e duplo clique para reset.
   - Footswitches com LEDs verdes acesos para módulos ativos e apagados em bypass.
 - **Seleção e Troca de Presets (36 Presets):**
@@ -138,6 +143,11 @@ python tankg.py status           # Exibe o status atual de todos os parâmetros
 python tankg.py preset list      # Lista os 36 presets (1A a 9D)
 python tankg.py type list        # Lista os 9 modelos de amplificador
 python tankg.py cab list         # Lista os slots de IR Cab
+
+# Criação de Timbres com Inteligência Artificial (Gemini API)
+python tankg.py ai "timbre do solo de Stairway to Heaven"
+python tankg.py ai "som de Dani California do RHCP" --slot 3B --save
+python tankg.py ai "clean aveludado com chorus e reverb espaçoso" --slot 1A --save
 
 # Troca e Gravação de Presets
 python tankg.py preset 3B        # Seleciona o preset 3B (ou número 10)

@@ -7,11 +7,13 @@ Gerencia debouncing de parâmetros, prevenção de loopbacks e gravação na EEP
 from pathlib import Path
 from typing import Optional, Union, List
 
-from PySide6.QtCore import QObject, Signal, QTimer, Slot
+from PySide6.QtCore import QObject, Signal, QTimer, Slot, QThread
 
 from ..model.pedal_state import PedalState
 from ..model.preset import parse_preset_name, get_preset_name
 from ..services.midi_service import MidiService
+from ..services.gemini_preset_service import GeminiPresetService
+from ..services.preset_validator import OutOfDomainPromptError
 from ..services.sysex_codec import (
     build_gate_sysex,
     build_cab_sysex,
@@ -22,6 +24,27 @@ from ..services.sysex_codec import (
     build_eeprom_flush_sysex,
     parse_sysex,
 )
+
+
+class AIGenerationWorker(QThread):
+    """Thread em segundo plano para consultar o Gemini sem congelar a UI."""
+    preset_ready = Signal(object, str, str)  # (PedalState, name_suggestion, musical_explanation)
+    error_occurred = Signal(str)
+
+    def __init__(self, service: GeminiPresetService, prompt: str, api_key: Optional[str] = None):
+        super().__init__()
+        self.service = service
+        self.prompt = prompt
+        self.api_key = api_key
+
+    def run(self):
+        try:
+            state, name, explanation = self.service.generate_preset(self.prompt, self.api_key)
+            self.preset_ready.emit(state, name, explanation)
+        except OutOfDomainPromptError as e:
+            self.error_occurred.emit(f"⚠️ {e.message}")
+        except Exception as e:
+            self.error_occurred.emit(f"Erro na geração de timbre: {e}")
 
 
 class ControlViewModel(QObject):
@@ -35,6 +58,11 @@ class ControlViewModel(QObject):
     notification = Signal(str, str)             # (mensagem, tipo: 'info' | 'success' | 'warning' | 'error')
     sysex_activity = Signal(str, list)          # ('SENT' | 'RECV', hex_bytes)
 
+    # Sinais do Agente de IA (Gemini)
+    ai_generation_started = Signal()
+    ai_preset_ready = Signal(object, str, str)  # (state, suggestion_name, explanation)
+    ai_generation_error = Signal(str)
+
     def __init__(self, midi_service: Optional[MidiService] = None, state_file: Optional[Path] = None, parent=None):
         super().__init__(parent)
         self.state_file = state_file or (Path.cwd() / "state.json")
@@ -46,6 +74,10 @@ class ControlViewModel(QObject):
         self.midi.message_received.connect(self._on_midi_message_received)
         self.midi.message_sent.connect(self._on_midi_message_sent)
         self.midi.error_occurred.connect(self._on_midi_error)
+
+        # Serviço Gemini AI
+        self.gemini_service = GeminiPresetService()
+        self._ai_worker: Optional[AIGenerationWorker] = None
 
         # Controle de debounce para envio em tempo real
         self._suppress_midi_send = False
@@ -280,3 +312,51 @@ class ControlViewModel(QObject):
     def get_available_ports(self) -> List[str]:
         outs, _ = self.midi.scan_ports()
         return outs
+
+    # --- Ações do Agente de IA (Gemini) ---
+    def generate_ai_preset(self, prompt: str, api_key: Optional[str] = None):
+        """Dispara a geração de timbre via IA em thread secundária."""
+        if self._ai_worker and self._ai_worker.isRunning():
+            self.notification.emit("Aguarde: já existe uma criação de timbre em andamento.", "warning")
+            return
+
+        self.ai_generation_started.emit()
+        self._ai_worker = AIGenerationWorker(self.gemini_service, prompt, api_key)
+        self._ai_worker.preset_ready.connect(self._on_ai_preset_ready)
+        self._ai_worker.error_occurred.connect(self._on_ai_generation_error)
+        self._ai_worker.start()
+
+    def _on_ai_preset_ready(self, state: PedalState, name: str, explanation: str):
+        self.ai_preset_ready.emit(state, name, explanation)
+        self.notification.emit(f"Timbre '{name}' gerado com sucesso pela IA!", "success")
+
+    def _on_ai_generation_error(self, err_msg: str):
+        self.ai_generation_error.emit(err_msg)
+        self.notification.emit(err_msg, "error")
+
+    def apply_ai_preset_preview(self, new_state: PedalState):
+        """Aplica o timbre gerado pela IA imediatamente no pedal para teste em tempo real."""
+        # Preserva o preset atual enquanto testa os parâmetros de áudio
+        new_state.preset = self.state.preset
+        self.state = new_state
+        self.save_state_to_disk()
+        self.state_updated.emit(self.state)
+
+        # Transmite os parâmetros em tempo real para o pedal físico
+        if self.is_connected:
+            self.midi.send_sysex(build_preset_param_sysex(self.state))
+            self.midi.send_sysex(build_gate_sysex(self.state.gate))
+            self.midi.send_sysex(build_cab_sysex(self.state.cab))
+            self.midi.send_sysex(build_module_bypass_sysex("amp", bool(self.state.amp_on)))
+            self.midi.send_sysex(build_module_bypass_sysex("mod", bool(self.state.mod_on)))
+            self.midi.send_sysex(build_module_bypass_sysex("dly", bool(self.state.dly_on)))
+            self.midi.send_sysex(build_module_bypass_sysex("rev", bool(self.state.rev_on)))
+            self.notification.emit("Timbre da IA aplicado no pedal para teste em tempo real!", "info")
+        else:
+            self.notification.emit("Timbre da IA carregado na tela (pedal desconectado).", "info")
+
+    def save_ai_preset_to_slot(self, state: PedalState, target_slot: Union[str, int]) -> bool:
+        """Aplica o timbre e grava na EEPROM do slot indicado."""
+        self.state = state
+        return self.save_current_preset(target_slot)
+

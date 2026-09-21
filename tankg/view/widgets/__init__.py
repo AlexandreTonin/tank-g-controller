@@ -6,5 +6,6 @@ from .rotary_knob import RotaryKnob
 from .footswitch import Footswitch
 from .module_card import ModuleCard
 from .preset_grid import PresetGrid
+from .ai_tone_panel import AITonePanel
 
-__all__ = ["RotaryKnob", "Footswitch", "ModuleCard", "PresetGrid"]
+__all__ = ["RotaryKnob", "Footswitch", "ModuleCard", "PresetGrid", "AITonePanel"]

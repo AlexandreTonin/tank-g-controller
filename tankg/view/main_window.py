@@ -19,6 +19,7 @@ from .widgets.rotary_knob import RotaryKnob
 from .widgets.footswitch import Footswitch
 from .widgets.module_card import ModuleCard
 from .widgets.preset_grid import PresetGrid
+from .widgets.ai_tone_panel import AITonePanel
 
 
 class MainWindow(QMainWindow):
@@ -54,7 +55,11 @@ class MainWindow(QMainWindow):
         # 1. Top Header Bar (Título, Preset Ativo, Porta MIDI, Conectar)
         root_layout.addLayout(self._build_header())
 
-        # 2. Área Central de Efeitos (Scrollable para caber confortavelmente em qualquer tela)
+        # 2. Painel de Inteligência Artificial (Gemini Tone Crafter)
+        self.ai_panel = AITonePanel(self)
+        root_layout.addWidget(self.ai_panel)
+
+        # 3. Área Central de Efeitos (Scrollable para caber confortavelmente em qualquer tela)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -359,6 +364,15 @@ class MainWindow(QMainWindow):
         # Grid de Presets
         self.preset_grid.preset_selected.connect(self.vm.switch_preset)
         self.preset_grid.save_requested.connect(self.vm.save_current_preset)
+
+        # Painel do Agente de IA (Gemini)
+        self.ai_panel.generate_requested.connect(self.vm.generate_ai_preset)
+        self.ai_panel.preview_requested.connect(self.vm.apply_ai_preset_preview)
+        self.ai_panel.save_requested.connect(self.vm.save_ai_preset_to_slot)
+
+        self.vm.ai_generation_started.connect(lambda: self.ai_panel.set_loading(True))
+        self.vm.ai_preset_ready.connect(self.ai_panel.show_ai_result)
+        self.vm.ai_generation_error.connect(self.ai_panel.show_error)
 
     # --- Handlers de Atualização de UI ---
     def _on_state_updated(self, state: PedalState):
