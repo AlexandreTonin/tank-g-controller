@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🎸 M-Vave Tank-G Controller
+# M-Vave Tank-G Controller
 
-**Controle total da pedaleira M-Vave Tank-G pelo computador, com GUI, CLI e criação de timbres por IA.**
+Controle a pedaleira M-Vave Tank-G pelo computador: interface gráfica, linha de comando e timbres gerados pelo Gemini.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52?logo=qt&logoColor=white)
@@ -10,34 +10,34 @@
 ![Tests](https://img.shields.io/badge/testes-25%20passando-brightgreen?logo=pytest&logoColor=white)
 ![License](https://img.shields.io/github/license/AlexandreTonin/tank-g-controller)
 
-[Funcionalidades](#-funcionalidades-suportadas) •
-[Instalação](#️-instalação-e-execução) •
-[CLI](#-uso-via-linha-de-comando-cli) •
-[Protocolo](#-protocolo-midi-sysex-decifrado) •
-[Documentação](#-documentação)
+[Funcionalidades](#funcionalidades) •
+[Instalação](#instalação-e-execução) •
+[CLI](#uso-via-linha-de-comando-cli) •
+[Protocolo](#protocolo-midi-sysex) •
+[Documentação](#documentação)
 
 </div>
 
 ---
 
-Controlador desktop moderno em **PySide6 (Qt Widgets)** e interface via linha de comando (CLI) em Python para a pedaleira multi-efeitos **M-Vave (Cuvave) Tank-G** via USB-MIDI SysEx.
+Aplicativo desktop em PySide6 e CLI em Python para a pedaleira multiefeitos M-Vave (Cuvave) Tank-G. A comunicação acontece por SysEx sobre USB-MIDI.
 
-Este projeto é fruto de **engenharia reversa completa** do protocolo de comunicação USB-MIDI do aplicativo oficial da M-Vave (`M-EFCS`), permitindo controlar, ajustar e salvar parâmetros do pedal programaticamente e visualmente sem depender do software proprietário.
+O protocolo não tem documentação pública. Capturei o tráfego USB do aplicativo oficial da M-Vave (`M-EFCS`) no Wireshark e decifrei os comandos um a um: parâmetros do preset, bypass de módulos, troca de preset e gravação na EEPROM. Com isso dá para editar e salvar presets sem o software da fabricante, que só roda no Windows.
 
 ---
 
-## 🏗️ Arquitetura do Software (MVVM)
+## Arquitetura (MVVM)
 
-O projeto foi inteiramente refatorado para o padrão arquitetural **Model-View-ViewModel (MVVM)**, desacoplando o modelo de dados puro, o processamento de áudio/hardware e a camada gráfica:
+O código segue Model-View-ViewModel. O estado do pedal fica em dataclasses sem dependência de Qt, a comunicação MIDI roda em uma thread própria e a interface só conversa com o ViewModel:
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │               View (PySide6 / Widgets)                 │
 │  - Gemini AI Tone Crafter (Prompt + Sugestões rápidas) │
-│  - Janela Dark Theme moderna com controles táteis      │
-│  - Knobs vetoriais com leitura precisa e reset duplo   │
-│  - Footswitches metálicos com LED indicador de bypass  │
-│  - Matriz visual 9x4 de presets (36 slots)             │
+│  - Janela principal com tema escuro                    │
+│  - Knobs com arrasto, roda do mouse e reset no duplo   │
+│  - Footswitches com LED de bypass                      │
+│  - Grade 9x4 de presets (36 slots)                     │
 └───────────────────────────▲────────────────────────────┘
                             │ Qt Signals & Slots
                             │ (Data Binding Bidirecional)
@@ -83,45 +83,41 @@ tank-g-controller/
 
 ---
 
-## 🎸 Funcionalidades Suportadas
+## Funcionalidades
 
-- **✨ Gemini AI Tone Crafter (Feature Principal):**
-  - Crie presets a partir de linguagem natural livre (ex: *"Timbre do solo de Dani California"*, *"Overdrive cremoso estilo Stevie Ray Vaughan"*, *"Clean estalado com chorus para funk"*).
-  - O agente interpreta a intenção tonal, recomenda captadores da guitarra e escolhe exatamente o amplificador, equalização, ganho e efeitos compatíveis com a pedaleira.
-  - Saída 100% estruturada via JSON Schema rígido (Pydantic).
-  - Validador defensivo que nunca confia cegamente na IA, clampeando e normalizando os valores nos limites mecânicos do pedal.
-  - Teste imediato em tempo real no pedal sem sobrescrever a memória permanente ou gravação direta na EEPROM do slot desejado.
-- **Interface Gráfica Completa (PySide6):**
-  - Painéis modulares com código de cores: **AI TONE CRAFTER**, **GATE & CAB**, **PREAMP / AMP**, **MODULATION**, **DELAY** e **REVERB**.
-  - Knobs rotativos vetoriais com controle por arrasto vertical, roda do mouse e duplo clique para reset.
-  - Footswitches com LEDs verdes acesos para módulos ativos e apagados em bypass.
-- **Seleção e Troca de Presets (36 Presets):**
-  - Navegação instantânea pelos 9 Bancos e 4 Slots (**1A a 9D**).
-- **Gravação Persistente na EEPROM:**
-  - Salva o preset atual ou qualquer preset de destino diretamente na memória permanente do pedal (`0x69`).
-- **Módulo de Pré-amplificador (AMP):**
-  - 9 Modelos de amplificadores clássicos (VOX AC30, Fender '65 Twin Reverb, Bogner Shiva, Marshall JTM45, Plexi 100, JCM800, EVH 5150, ENGL Powerball, Mesa Dual Rectifier).
-  - Ajustes de equalização: `gain`, `treble`, `middle`, `bass` e `volume` (`0 a 100`).
-- **Módulo de Modulação (MOD):**
-  - Seleção entre **Chorus**, **Phaser** e **Tremolo** (`1 a 40`).
-  - Velocidade da modulação: `speed` (`0 a 100`).
-- **Módulo de Delay (DLY):**
-  - Seleção entre **Analog Delay**, **Tape Delay** e **Dual Delay** (`1 a 40`).
-  - Tempo / Feedback: `delay-time` (`0 a 100`).
-- **Módulo de Reverb (REV):**
-  - Seleção entre **Room Reverb**, **Spring Reverb** e **Cloud Reverb** (`1 a 40`).
-  - Mistura: `reverb-mix` (`0 a 100`).
-- **Módulo de Dinâmica & Gabinetes:**
-  - **Noise Gate:** `0 a 100` (desativado em zero).
-  - **Simulações de Gabinete (IR CAB):** Slots `0 a 8` (0 = Bypass, 1 a 8 = Gabinetes).
-- **Ativação / Desativação de Módulos (Bypass):**
-  - Liga ou desliga individualmente os blocos: `amp`, `mod`, `dly` e `rev`.
+### Timbres gerados por IA (Gemini AI Tone Crafter)
+
+Descreva o som em texto livre, por exemplo *"solo de Dani California"*, *"overdrive cremoso estilo Stevie Ray Vaughan"* ou *"clean estalado com chorus para funk"*. O Gemini devolve amp, equalização, ganho, efeitos e uma sugestão de captador.
+
+- A resposta vem em JSON validado por um schema Pydantic com todos os campos obrigatórios.
+- O `PresetValidator` limita cada valor à faixa que o pedal aceita antes de enviar qualquer coisa. Se o modelo devolver `gain: 140`, o pedal recebe `100`.
+- Dá para ouvir o timbre no pedal sem gravar, ou salvar direto na EEPROM de um slot.
+
+### Interface gráfica
+
+- Painéis por módulo: AI Tone Crafter, Gate & Cab, Preamp/Amp, Modulation, Delay e Reverb.
+- Knobs controlados por arrasto vertical ou roda do mouse; duplo clique volta ao valor padrão.
+- Footswitches com LED verde aceso quando o módulo está ativo e apagado em bypass.
+
+### Controle do pedal
+
+- **Presets:** troca entre os 36 presets (9 bancos × 4 slots, de `1A` a `9D`).
+- **Gravação na EEPROM:** salva o estado atual em qualquer slot da memória permanente (comando `0x69`).
+- **AMP:**
+  - 9 modelos de amplificador (VOX AC30, Fender '65 Twin Reverb, Bogner Shiva, Marshall JTM45, Plexi 100, JCM800, EVH 5150, ENGL Powerball, Mesa Dual Rectifier).
+  - `gain`, `treble`, `middle`, `bass` e `volume`, de `0` a `100`.
+- **MOD:** Chorus, Phaser ou Tremolo, com nível de `1` a `40`; `speed` de `0` a `100`.
+- **DLY:** Analog, Tape ou Dual Delay, com nível de `1` a `40`; `delay-time` de `0` a `100`.
+- **REV:** Room, Spring ou Cloud Reverb, com nível de `1` a `40`; `reverb-mix` de `0` a `100`.
+- **Noise gate:** `0` a `100`; em `0` fica desligado.
+- **IR CAB:** slots `0` a `8`, sendo `0` o bypass.
+- **Bypass:** liga e desliga `amp`, `mod`, `dly` e `rev` separadamente.
 
 ---
 
-## 🛠️ Instalação e Execução
+## Instalação e execução
 
-### 1. Clonar e Configurar Ambiente
+### 1. Clonar e instalar
 
 ```bash
 git clone https://github.com/AlexandreTonin/tank-g-controller.git
@@ -136,9 +132,9 @@ source .venv/bin/activate         # Linux / macOS
 pip install -r requirements.txt
 ```
 
-### 2. Configurar a Chave da API Gemini (opcional, só para o AI Tone Crafter)
+### 2. Chave da API Gemini (opcional)
 
-A chave é procurada nesta ordem: valor informado na interface, variável de ambiente `GEMINI_API_KEY` e, por fim, o arquivo local `config.json` (ignorado pelo Git).
+Só o AI Tone Crafter precisa dela. O programa procura a chave nesta ordem: campo na interface, variável de ambiente `GEMINI_API_KEY` e arquivo local `config.json` (fora do Git).
 
 ```bash
 # Windows (PowerShell)
@@ -147,9 +143,9 @@ $env:GEMINI_API_KEY = "sua-chave"
 export GEMINI_API_KEY="sua-chave"
 ```
 
-### 3. Abrir a Interface Gráfica (GUI)
+### 3. Abrir a interface gráfica
 
-Execute qualquer um dos comandos abaixo:
+Qualquer um destes comandos abre a GUI:
 ```bash
 python main.py
 # ou
@@ -158,38 +154,38 @@ python tankg.py
 python -m tankg
 ```
 
-### 4. Executar a Suíte de Testes Automatizados
+### 4. Rodar os testes
 
-O projeto inclui testes de unidade cobrindo todas as fórmulas matemáticas e codecs de bits sem precisar do pedal conectado:
+Os testes cobrem checksums, empacotamento de bits, estado do pedal e o validador da IA. Nenhum precisa do pedal conectado:
 ```bash
 pytest -v
 ```
 
 ---
 
-## 💻 Uso via Linha de Comando (CLI)
+## Uso via linha de comando (CLI)
 
-O arquivo `tankg.py` mantém compatibilidade total com automações e uso via terminal:
+Com argumentos, `tankg.py` funciona como CLI:
 
 ```bash
-# Diagnóstico e Consulta
+# Consulta
 python tankg.py list             # Lista portas MIDI disponíveis
 python tankg.py status           # Exibe o status atual de todos os parâmetros
 python tankg.py preset list      # Lista os 36 presets (1A a 9D)
 python tankg.py type list        # Lista os 9 modelos de amplificador
 python tankg.py cab list         # Lista os slots de IR Cab
 
-# Criação de Timbres com Inteligência Artificial (Gemini API)
+# Timbres gerados pelo Gemini
 python tankg.py ai "timbre do solo de Stairway to Heaven"
 python tankg.py ai "som de Dani California do RHCP" --slot 3B --save
 python tankg.py ai "clean aveludado com chorus e reverb espaçoso" --slot 1A --save
 
-# Troca e Gravação de Presets
+# Troca e gravação de presets
 python tankg.py preset 3B        # Seleciona o preset 3B (ou número 10)
 python tankg.py 3B               # Atalho direto para trocar de preset
 python tankg.py save 3B          # Grava configuração atual na EEPROM do preset 3B
 
-# Controle do Amplificador
+# Amplificador
 python tankg.py type 6           # Marshall JCM800
 python tankg.py gain 85          # Ajusta ganho para 85%
 python tankg.py treble 65        # Ajusta agudos
@@ -197,7 +193,7 @@ python tankg.py middle 50        # Ajusta médios
 python tankg.py bass 60          # Ajusta graves
 python tankg.py volume 70        # Ajusta volume
 
-# Efeitos e Dinâmica
+# Efeitos e dinâmica
 python tankg.py chorus 25        # Chorus no nível 25/40
 python tankg.py delay-tape 30    # Tape Delay no nível 30/40
 python tankg.py delay-time 55    # Tempo do Delay
@@ -205,21 +201,21 @@ python tankg.py reverb-room 20   # Room Reverb no nível 20/40
 python tankg.py gate 40          # Noise Gate em 40%
 python tankg.py cab 1            # Gabinete VHT Deliverance (4x12)
 
-# Bypass de Módulos
+# Bypass de módulos
 python tankg.py amp off          # Desativa módulo de amplificador
 python tankg.py mod on           # Ativa módulo de modulação
 ```
 
 ---
 
-## 🔬 Protocolo MIDI SysEx Decifrado
+## Protocolo MIDI SysEx
 
-### Identificador de Fabricante
-Todas as mensagens SysEx da M-Vave iniciam com o cabeçalho:
+### Cabeçalho
+Toda mensagem SysEx da M-Vave começa com:
 `F0 00 32 09 ... F7`
 
 ### 1. Preset em Tempo Real (Comando `0x31` - 36 bytes)
-Os 12 parâmetros são multiplicados por 2, empacotados em grupos de 7 bits (bytes 18 a 32), e o checksum de 14 bits obedece à fórmula:
+Cada um dos 12 parâmetros vira um campo de 8 bits com o valor multiplicado por 2. Os campos são concatenados e fatiados em bytes de 7 bits (bytes 18 a 32). O checksum de 14 bits é:
 ```
 params_sum = type + gain + treble + middle + bass + volume
            + mod_fx + mod_speed + dly_mix + dly_time + rev_decay + rev_mix
@@ -245,25 +241,26 @@ ck2 = (ck >> 7) & 0x7F
 ```
 
 ### 4. Gravação na Memória EEPROM (Comando `0x69` - 44 bytes)
-Grava os 21 bytes de parâmetros no endereço de offset específico daquele preset:
+Grava os 21 bytes do preset no endereço daquele slot:
 ```
 offset = preset_id * 21 + 2
 ck  = (230 - sum(field[0..20]) - offset) % 256
 ck1 = ck & 0x7F
 ck2 = (ck >> 7) & 0x7F
 ```
-Logo em seguida, o controlador envia um comando de flush (`0x41`) e a troca para o próprio preset (`0x49`) para que o pedal recarregue a memória flash.
+Depois da gravação, o controlador envia um flush (`0x41`) e seleciona o próprio preset (`0x49`) para o pedal recarregar a memória.
 
 ---
 
-## ⚠️ Dica Importante para Windows
-No Windows, os drivers de áudio/MIDI (WinMM) operam em modo de **acesso exclusivo**. Para conectar o controlador à Tank-G:
-1. Certifique-se de que o software proprietário da M-Vave (`m_efcs.exe`) está **fechado**.
-2. Certifique-se de que nenhuma DAW (Reaper, FL Studio, etc.) está travando a porta `USB-Midi 1`.
+## Windows: porta MIDI ocupada
+
+No Windows, o driver MIDI (WinMM) só deixa um programa abrir a porta por vez. Antes de conectar:
+1. Feche o aplicativo da M-Vave (`m_efcs.exe`).
+2. Feche qualquer DAW (Reaper, FL Studio etc.) que esteja usando a porta `USB-Midi 1`.
 
 ---
 
-## 📚 Documentação
+## Documentação
 
 - [Guia de parâmetros e módulos](docs/guia-de-parametros.md): amps, gabinetes, setores de efeito e footswitches.
 - [Diário de engenharia reversa](docs/engenharia-reversa.md): como cada comando SysEx foi capturado e decifrado.
@@ -271,5 +268,5 @@ No Windows, os drivers de áudio/MIDI (WinMM) operam em modo de **acesso exclusi
 
 ---
 
-## 📄 Licença
-Distribuído sob a licença [MIT](LICENSE). Criado para a comunidade de guitarristas e entusiastas de áudio.
+## Licença
+[MIT](LICENSE).

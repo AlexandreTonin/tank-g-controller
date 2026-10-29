@@ -1,7 +1,7 @@
 # Engenharia Reversa do Protocolo USB/MIDI da M-Vave Tank-G
 
-> Diário técnico da engenharia reversa que deu origem a este projeto, na ordem em que as descobertas aconteceram.
-> As capturas do Wireshark citadas aqui estão na pasta [`captures/`](../captures). Para o resumo do protocolo, veja o [README](../README.md#-protocolo-midi-sysex-decifrado).
+> Anotações da engenharia reversa, na ordem em que cada parte do protocolo foi decifrada.
+> As capturas do Wireshark citadas aqui estão na pasta [`captures/`](../captures). Para o resumo do protocolo, veja o [README](../README.md#protocolo-midi-sysex).
 
 ## Objetivo
 
@@ -91,7 +91,7 @@ F0          -> inicio do SysEx
 F7          -> fim do SysEx
 ```
 
-### Exemplo 2 — Noise Gate = 100 e Noise Gate = 0 (CONFIRMADO)
+### Exemplo 2 — Noise Gate = 100 e Noise Gate = 0 (confirmado)
 
 **Pacote #15 — Noise Gate = 100** (frame de 75 bytes, protocolo SYSEX):
 
@@ -133,10 +133,10 @@ F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06 3c 31 35 68 4b 25 03 00
 | byte 34                                    | `7B`             | `5F`           | Provável checksum/CRC (byte baixo)                                              |
 | byte 35                                    | `01`             | `00`           | Provável checksum/CRC (byte alto)                                               |
 
-**Conclusão confirmada:** o byte 18 do SysEx (offset `0x32` no frame USB bruto) é o
+**Conclusão:** o byte 18 do SysEx (offset `0x32` no frame USB bruto) é o
 valor do Noise Gate, codificado direto em decimal de 0-100 (não em escala MIDI 0-127).
 
-### Descoberta e Decodificação do Checksum (RESOLVIDO! ✅)
+### Checksum
 
 Com a captura dos valores intermediários (10, 20, 25, 50) somados a 0 e 100:
 
@@ -290,7 +290,7 @@ if __name__ == "__main__":
 
 Capturas realizadas desativando (OFF) os módulos na ordem: **AMP, MOD, DLY, REV**.
 
-### Mensagens SysEx extraídas:
+### Mensagens SysEx extraídas
 
 ```text
 AMP OFF: F0 00 32 09 49 00 00 00 02 00 00 00 00 11 00 00 00 00 54 03 F7
@@ -306,7 +306,7 @@ REV OFF: F0 00 32 09 49 00 00 00 02 03 00 00 00 11 00 00 00 00 4E 03 F7
 REV ON : F0 00 32 09 49 00 00 00 02 03 00 00 00 11 00 00 00 01 4C 03 F7
 ```
 
-### Estrutura do comando e Fórmula do Checksum (RESOLVIDO! ✅):
+### Estrutura do comando e Fórmula do Checksum
 
 | Índice | Byte | Descrição |
 | :--- | :--- | :--- |
@@ -326,11 +326,11 @@ REV ON : F0 00 32 09 49 00 00 00 02 03 00 00 00 11 00 00 00 01 4C 03 F7
 
 ---
 
-## Seleção de IR CAB (Slots 0 a 8) (RESOLVIDO! ✅)
+## Seleção de IR CAB (Slots 0 a 8)
 
 Capturas realizadas alternando os gabinetes nos slots **0, 1, 4 e 8**.
 
-### Mensagens SysEx extraídas:
+### Mensagens SysEx extraídas
 
 ```text
 CAB 0 (Bypass)        : F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06 3C 31 35 68 4B 25 03 00 18 18 52 20 00 00 62 00 F7
@@ -339,7 +339,7 @@ CAB 4 (Mesa Boogie)   : F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06
 CAB 8 (Diezel V30)    : F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06 3C 31 35 68 4B 25 03 00 18 18 52 20 00 04 5A 00 F7
 ```
 
-### Anatomia e Codificação:
+### Anatomia e Codificação
 
 1. **Codificação do Slot (Índices 31 e 32):**
    O slot (0 a 8) é deslocado em 6 bits para a esquerda e empacotado no formato 14-bit MIDI:
@@ -354,7 +354,7 @@ CAB 8 (Diezel V30)    : F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06
    ck2 = 0x00
    ```
 
-### Tabela Completa dos 9 Slots (0 a 8):
+### Tabela Completa dos 9 Slots (0 a 8)
 
 | Slot | Modelo / Gabinete | Byte 31 | Byte 32 | Checksum (Bytes 33, 34) |
 | :---: | :--- | :---: | :---: | :---: |
@@ -370,7 +370,7 @@ CAB 8 (Diezel V30)    : F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06
 
 ---
 
-## Parâmetros do Módulo de AMP (RESOLVIDO! ✅)
+## Parâmetros do Módulo de AMP
 
 Análise das 12 capturas com extração direta do arquivo de captura `module_amp.pcapng` alterando:
 - **Type**: 9 ➔ 5 ➔ 1
@@ -380,7 +380,7 @@ Análise das 12 capturas com extração direta do arquivo de captura `module_amp
 - **Bass**: 100 ➔ 50 ➔ 0
 - **Volume**: 100 ➔ 50 ➔ 0
 
-### Descoberta Fundamental: Codificação em Bitstream Contínuo de 48 bits
+### Codificação: 6 campos de 8 bits em sequência
 
 Os 6 parâmetros do amplificador são armazenados como **6 inteiros de 8 bits** (`48 bits` no total), onde cada parâmetro de 0 a 100 é multiplicado por 2 (escala de 0.5% de resolução):
 
@@ -402,13 +402,13 @@ packed_7 = [(val48 >> (7 * i)) & 0x7F for i in range(7)]  # bytes 18 a 24
 
 ---
 
-## Parâmetros do Módulo de MODULAÇÃO (RESOLVIDO! ✅)
+## Parâmetros do Módulo de MODULAÇÃO
 
 Análise das 7 capturas do arquivo `module_mod.pcapng` alterando:
 - **MOD FX** (Chorus, Phaser, Tremolo nos 3 setores): valores 19, 43, 63, 84, 107
 - **MOD SPEED**: 0 ➔ 50 ➔ 100
 
-### Descoberta: O Bitstream Unificado do Preset
+### Mapa completo de campos do preset
 
 A Tank-G mapeia todos os parâmetros do preset em uma cadeia contínua de campos de 8 bits multiplicados por 2:
 
@@ -428,7 +428,7 @@ A Tank-G mapeia todos os parâmetros do preset em uma cadeia contínua de campos
 | `11` | **RVB MIX** | 0 a 100 | `rev_mix * 2` |
 | `12` | **Constante** | — | `0x0E` (14 decimal) |
 
-### Fórmula Mestra do Checksum (100% comprovada em todos os 33 pacotes):
+### Checksum do preset (confere nos 33 pacotes capturados)
 
 ```python
 ck = (211 - type - gain - treble - middle - bass - volume
@@ -439,15 +439,15 @@ ck2 = (ck >> 7) & 0x7F
 
 ---
 
-## Parâmetros do Módulo de DELAY (RESOLVIDO! ✅)
+## Parâmetros do Módulo de DELAY
 
 Análise das 7 capturas do arquivo `module_dly.pcapng` alterando:
 - **DLY MIX** (Analog, Tape, Dual nos 3 setores): valores 19, 41, 63, 84, 107
 - **DLY TIME**: 0 ➔ 50 ➔ 100
 
-### Mapeamento do DLY MIX e DLY TIME:
+### Mapeamento do DLY MIX e DLY TIME
 
-O controle de Delay segue uma arquitetura idêntica à da Modulação:
+O DLY MIX usa os mesmos setores do MOD FX:
 - **Setor 1 (Analog Delay):** `dly_mix = val - 1` (bruto `0..39` ➔ 40 valores).
 - *Transição / Dead zone:* `40..43` (4 valores).
 - **Setor 2 (Tape Delay):** `dly_mix = 43 + val` (bruto `44..83` ➔ 40 valores).
@@ -457,13 +457,13 @@ O controle de Delay segue uma arquitetura idêntica à da Modulação:
 
 ---
 
-## Parâmetros do Módulo de REVERB (RESOLVIDO! ✅)
+## Parâmetros do Módulo de REVERB
 
 Análise das 7 capturas do arquivo `module_rev.pcapng` alterando:
 - **RVB DECAY** (Room, Spring, Cloud nos 3 setores): valores 19, 40, 63, 84, 107
 - **RVB MIX**: 0 ➔ 50 ➔ 100
 
-### Mapeamento do RVB DECAY e RVB MIX:
+### Mapeamento do RVB DECAY e RVB MIX
 
 - **Setor 1 (Room Reverb):** `rev_decay = val - 1` (bruto `0..39` ➔ 40 valores).
 - *Transição / Dead zone:* `40..43` (4 valores).
@@ -474,13 +474,13 @@ Análise das 7 capturas do arquivo `module_rev.pcapng` alterando:
 
 ---
 
-## Troca de Presets e Bancos (1A a 9D — 36 Presets) (RESOLVIDO! ✅)
+## Troca de Presets e Bancos (1A a 9D — 36 Presets)
 
 Análise das 7 capturas do arquivo `slot-and-bank-switch.pcapng` trocando presets em sequência:
 - Banco 3: 3A ➔ 3B ➔ 3C ➔ 3D
 - Banco 4: 4A ➔ 4B ➔ 4C ➔ 4D
 
-### Estrutura do Comando SysEx (21 bytes):
+### Estrutura do Comando SysEx (21 bytes)
 
 ```text
 F0 00 32 09 49 00 00 00 02 [preset_id] 00 00 00 1E 00 00 00 01 [ck1] [ck2] F7
@@ -503,16 +503,16 @@ F0 00 32 09 49 00 00 00 02 [preset_id] 00 00 00 1E 00 00 00 01 [ck1] [ck2] F7
 
 ---
 
-## Gravação de Presets na Memória EEPROM (Comando `0x69`) (RESOLVIDO! ✅)
+## Gravação de Presets na Memória EEPROM (Comando `0x69`)
 
 Análise das capturas `save-preset-1a.pcapng`, `save-preset-3c.pcapng` e `save-preset.pcapng`:
 
-### 1. Formato do Pacote SysEx (44 bytes):
+### 1. Formato do Pacote SysEx (44 bytes)
 ```text
 F0 00 32 09 69 01 00 00 02 [b9] [b10] 00 00 50 02 00 00 [24 bytes fatiados em 7-bit] [ck1] [ck2] F7
 ```
 
-### 2. Endereçamento na Memória EEPROM:
+### 2. Endereçamento na Memória EEPROM
 Cada preset ocupa exatamente 21 bytes. O endereço inicial é:
 ```python
 offset = preset_id * 21 + 2
@@ -524,7 +524,7 @@ b10 = (offset >> 7) & 0x7F
 - **3B** (`preset_id = 9`): `offset = 191` → `b9 = 0x3F`, `b10 = 0x01`
 - **3C** (`preset_id = 10`): `offset = 212` → `b9 = 0x54`, `b10 = 0x01`
 
-### 3. Estrutura dos 21 Bytes de Dados do Preset:
+### 3. Estrutura dos 21 Bytes de Dados do Preset
 1. `fields[0..3]`: Estados dos módulos (`AMP`, `MOD`, `DLY`, `REV` - `0` ou `1`)
 2. `fields[4]`: **Noise Gate** (`0..100`)
 3. `fields[5]`: **Amp Type** (`1..9`)
@@ -535,14 +535,14 @@ b10 = (offset >> 7) & 0x7F
 8. `fields[17]`: **IR CAB** (`0..8`)
 9. `fields[18..20]`: Constantes (`255, 0, 0`)
 
-### 4. Fórmula do Checksum (100% comprovada nos pacotes):
+### 4. Checksum (confere em todas as capturas de gravação)
 ```python
 ck = (230 - sum(fields[0:21]) - offset) % 256
 ck1 = ck & 0x7F
 ck2 = (ck >> 7) & 0x7F
 ```
 
-### 5. Sequência Completa de Gravação:
+### 5. Sequência Completa de Gravação
 1. **Comando `0x69` (Write EEPROM):** envia os 21 bytes para o endereço calculado.
 2. **Comando `0x41` (Flush):** confirma e consolida a gravação (`F0 00 32 09 41 00 00 00 02 00 00 00 00 0F 00 00 00 0B 00 F7`).
 3. **Comando `0x49` (Select):** seleciona o preset gravado para ativação imediata.

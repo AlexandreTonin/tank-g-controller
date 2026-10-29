@@ -1,6 +1,6 @@
 # Guia Técnico de Parâmetros e Módulos — M-Vave Tank-G
 
-Este documento reúne todas as especificações técnicas, slots de amplificadores, gabinetes (IR CAB), módulos de efeito, setores de ajuste e funções dos footswitches para uso tanto no hardware quanto no aplicativo (M-EFCS).
+Referência dos amps, gabinetes (IR CAB), efeitos e footswitches da Tank-G. Os valores valem tanto no pedal quanto no aplicativo oficial (M-EFCS).
 
 > Para os comandos MIDI correspondentes, veja o [README](../README.md) e o [diário de engenharia reversa](engenharia-reversa.md).
 
@@ -102,10 +102,10 @@ O controle **RVB DECAY** seleciona o algoritmo de reverb através de 3 setores e
 
 A Tank-G possui 4 interruptores de pé principais (**A, B, C, D**). 
 
-A troca entre **Modo PRESET** e **Modo LIVE** é feita pressionando simultaneamente os pedais **B + C**.
+Pressione **B + C** juntos para alternar entre o **Modo PRESET** e o **Modo LIVE**.
 
 ### 4.1. Modo PRESET (Navegação de Memórias)
-O sistema possui 9 bancos, cada um com 4 presets (totalizando 36 slots).
+São 9 bancos de 4 presets, 36 no total.
 * **Footswitch A:** Seleciona o preset **A** do banco atual.
 * **Footswitch B:** Seleciona o preset **B** do banco atual.
 * **Footswitch C:** Seleciona o preset **C** do banco atual.
