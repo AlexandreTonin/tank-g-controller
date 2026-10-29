@@ -1,4 +1,7 @@
-# Contexto: Engenharia Reversa do Protocolo USB/MIDI da Mvave Tank-G
+# Engenharia Reversa do Protocolo USB/MIDI da M-Vave Tank-G
+
+> Diário técnico da engenharia reversa que deu origem a este projeto, na ordem em que as descobertas aconteceram.
+> As capturas do Wireshark citadas aqui estão na pasta [`captures/`](../captures). Para o resumo do protocolo, veja o [README](../README.md#-protocolo-midi-sysex-decifrado).
 
 ## Objetivo
 
@@ -148,21 +151,21 @@ Com a captura dos valores intermediários (10, 20, 25, 50) somados a 0 e 100:
 
 #### Algoritmo do Checksum
 1. O valor base do checksum é inversamente proporcional ao valor do parâmetro:
-   $$\text{ck} = (95 - \text{valor}) \pmod{256}$$
-2. Como o protocolo MIDI exige que os bytes de dados SysEx não usem o bit mais significativo (valores $\le 127$), o resultado de 8 bits é empacotado no formato padrão de **14-bit MIDI** (dois blocos de 7 bits):
+   `ck = (95 - valor) % 256`
+2. Como o protocolo MIDI exige que os bytes de dados SysEx não usem o bit mais significativo (valores `<= 127`), o resultado de 8 bits é empacotado no formato padrão de **14-bit MIDI** (dois blocos de 7 bits):
    ```python
    ck = (95 - valor) % 256
    ck_byte1 = ck & 0x7F        # LSB 7 bits
    ck_byte2 = (ck >> 7) & 0x7F # MSB 7 bits
    ```
 3. A nível de mensagem inteira, o checksum mantém constante a soma dos bytes de dados módulo 256:
-   $$(\sum \text{data\_bytes} + \text{ck}) \pmod{256} \equiv 154 \ (0x9A)$$
+   `(sum(data_bytes) + ck) % 256 == 154 (0x9A)`
 
 ---
 
-## Script Python desenvolvido
+## Primeiro script de testes (histórico)
 
-Arquivo: `tankg_control.py` (entregue anteriormente na conversa)
+Arquivo: `tankg_control.py`. Protótipo usado no início da pesquisa, antes de o checksum ser decifrado. Foi substituído pelo pacote `tankg` e não faz parte do repositório.
 
 Funcionalidades:
 
@@ -346,8 +349,10 @@ CAB 8 (Diezel V30)    : F0 00 32 09 31 01 00 00 02 04 00 00 00 61 01 00 00 00 06
    b32 = (val_14 >> 7) & 0x7F # MSB 7 bits
    ```
 2. **Fórmula do Checksum (Índices 33 e 34):**
-   $$\mathbf{ck_1} = 98 - \text{cab\_num} = 0x62 - \text{cab\_num}$$
-   $$\mathbf{ck_2} = 0x00$$
+   ```python
+   ck1 = 98 - cab_num  # 0x62 - cab_num
+   ck2 = 0x00
+   ```
 
 ### Tabela Completa dos 9 Slots (0 a 8):
 
@@ -379,7 +384,7 @@ Análise das 12 capturas com extração direta do arquivo de captura `module_amp
 
 Os 6 parâmetros do amplificador são armazenados como **6 inteiros de 8 bits** (`48 bits` no total), onde cada parâmetro de 0 a 100 é multiplicado por 2 (escala de 0.5% de resolução):
 
-$$\text{val}_{48} = [(\text{type} - 1) \times 2] \ \cup \ [2 \times \text{gain}] \ \cup \ [2 \times \text{treble}] \ \cup \ [2 \times \text{middle}] \ \cup \ [2 \times \text{bass}] \ \cup \ [2 \times \text{volume}]$$
+`val48 = [(type - 1) * 2] | [2 * gain] | [2 * treble] | [2 * middle] | [2 * bass] | [2 * volume]` (8 bits por campo, concatenados)
 
 Em seguida, esse valor de 48 bits é fatiado em **sete blocos de 7 bits** (MIDI 7-bit bytes) nos índices 18 a 24 do SysEx:
 
@@ -425,9 +430,12 @@ A Tank-G mapeia todos os parâmetros do preset em uma cadeia contínua de campos
 
 ### Fórmula Mestra do Checksum (100% comprovada em todos os 33 pacotes):
 
-$$\mathbf{ck} = (211 - \text{type} - \text{gain} - \text{treble} - \text{middle} - \text{bass} - \text{volume} - \text{mod\_fx} - \text{mod\_speed} - \text{dly\_mix} - \text{dly\_time} - \text{rev\_decay} - \text{rev\_mix}) \pmod{256}$$
-$$\mathbf{ck_1} = \text{ck} \ \& \ 0x7F$$
-$$\mathbf{ck_2} = (\text{ck} \gg 7) \ \& \ 0x7F$$
+```python
+ck = (211 - type - gain - treble - middle - bass - volume
+      - mod_fx - mod_speed - dly_mix - dly_time - rev_decay - rev_mix) % 256
+ck1 = ck & 0x7F
+ck2 = (ck >> 7) & 0x7F
+```
 
 ---
 
@@ -487,8 +495,11 @@ F0 00 32 09 49 00 00 00 02 [preset_id] 00 00 00 1E 00 00 00 01 [ck1] [ck2] F7
   - Banco 9: `9A = 32`, `9B = 33`, `9C = 34`, `9D = 35`
 - **Sub-endereço / Registrador:** `0x1E` (30 decimal)
 - **Fórmula do Checksum:**
-  $$\mathbf{ck} = (50 - 2 \times \text{preset\_id}) \pmod{256}$$
-  $$\mathbf{ck_1} = \text{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\text{ck} \gg 7) \ \& \ 0x7F$$
+  ```python
+  ck = (50 - 2 * preset_id) % 256
+  ck1 = ck & 0x7F
+  ck2 = (ck >> 7) & 0x7F
+  ```
 
 ---
 
@@ -503,12 +514,15 @@ F0 00 32 09 69 01 00 00 02 [b9] [b10] 00 00 50 02 00 00 [24 bytes fatiados em 7-
 
 ### 2. Endereçamento na Memória EEPROM:
 Cada preset ocupa exatamente 21 bytes. O endereço inicial é:
-$$\text{offset} = \text{preset\_id} \times 21 + 2$$
-$$\mathbf{b_9} = \text{offset} \ \& \ 0x7F, \quad \mathbf{b_{10}} = (\text{offset} \gg 7) \ \& \ 0x7F$$
+```python
+offset = preset_id * 21 + 2
+b9 = offset & 0x7F
+b10 = (offset >> 7) & 0x7F
+```
 
-- **1A** (`preset_id = 0`): `offset = 2` $\rightarrow$ `b9 = 0x02`, `b10 = 0x00`
-- **3B** (`preset_id = 9`): `offset = 191` $\rightarrow$ `b9 = 0x3F`, `b10 = 0x01`
-- **3C** (`preset_id = 10`): `offset = 212` $\rightarrow$ `b9 = 0x54`, `b10 = 0x01`
+- **1A** (`preset_id = 0`): `offset = 2` → `b9 = 0x02`, `b10 = 0x00`
+- **3B** (`preset_id = 9`): `offset = 191` → `b9 = 0x3F`, `b10 = 0x01`
+- **3C** (`preset_id = 10`): `offset = 212` → `b9 = 0x54`, `b10 = 0x01`
 
 ### 3. Estrutura dos 21 Bytes de Dados do Preset:
 1. `fields[0..3]`: Estados dos módulos (`AMP`, `MOD`, `DLY`, `REV` - `0` ou `1`)
@@ -522,8 +536,11 @@ $$\mathbf{b_9} = \text{offset} \ \& \ 0x7F, \quad \mathbf{b_{10}} = (\text{offse
 9. `fields[18..20]`: Constantes (`255, 0, 0`)
 
 ### 4. Fórmula do Checksum (100% comprovada nos pacotes):
-$$\mathbf{ck} = (230 - \sum_{i=0}^{20} \text{field}_i - \text{offset}) \pmod{256}$$
-$$\mathbf{ck_1} = \text{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\text{ck} \gg 7) \ \& \ 0x7F$$
+```python
+ck = (230 - sum(fields[0:21]) - offset) % 256
+ck1 = ck & 0x7F
+ck2 = (ck >> 7) & 0x7F
+```
 
 ### 5. Sequência Completa de Gravação:
 1. **Comando `0x69` (Write EEPROM):** envia os 21 bytes para o endereço calculado.
@@ -532,30 +549,13 @@ $$\mathbf{ck_1} = \text{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\text{ck} \gg 7)
 
 ---
 
-## Próximos passos
+## Status
 
-1. **Capturar mais amostras do noise gate** em valores intermediários (10, 25, 50, 75, 90)
-   para reunir dados suficientes e decifrar o algoritmo do checksum (últimos 2 bytes
-   antes do `F7`).
-2. Depois de decifrado o checksum, generalizar para outros parâmetros (gain, volume,
-   mid, treble, etc.) — repetindo o mesmo processo de captura A/B (valor mínimo vs
-   máximo) para cada um, e localizando o byte de offset correspondente dentro do payload.
-3. Investigar se o "ID do bloco/efeito" (offset próximo ao início do SysEx, valores
-   como `08`, `09`, `61`, `31`) muda conforme qual efeito/slot está sendo editado —
-   importante para generalizar o script para múltiplos efeitos, não só um.
-4. Investigar os bytes iniciais variáveis do frame USB bruto (antes do `F0`) — podem
-   ser sequence ID/nonce que o firmware espera para aceitar o comando; testar se o
-   replay funciona mesmo com esses bytes "errados" (fixos) ou se o pedal rejeita.
-5. Expandir o script Python para:
-   - Gerar dinamicamente o SysEx para qualquer valor de parâmetro (uma vez que o
-     checksum for decifrado)
-   - Mapear todos os parâmetros conhecidos (gain, volume, mid, noise gate...) para
-     seus respectivos offsets dentro do payload
-   - Opcionalmente, escutar (`mido.open_input`) as respostas `in` do pedal para
-     confirmar que o comando foi aceito
+Todos os itens planejados no início da pesquisa foram concluídos:
 
-## Ferramentas/ambiente do usuário
+- [x] Checksum do noise gate decifrado e generalizado para todos os parâmetros do preset (`0x31`)
+- [x] Bypass de módulos (`0x49` / `0x11`), IR CAB, troca de presets (`0x49` / `0x1E`)
+- [x] Gravação permanente na EEPROM (`0x69` → `0x41` → `0x49`)
+- [x] Geração dinâmica de SysEx para qualquer valor, implementada em [`tankg/services/sysex_codec.py`](../tankg/services/sysex_codec.py)
 
-- Prefere trabalhar **só no Windows** (sem VM/dual boot com Linux) para esse projeto
-- Já tem Wireshark + USBPcap funcionando e sabe identificar a interface `USBPcap`
-  correta e filtrar por tamanho de frame/protocolo SYSEX
+Ainda em aberto: ler as respostas do pedal (`mido.open_input`) para confirmar que cada comando foi aceito.

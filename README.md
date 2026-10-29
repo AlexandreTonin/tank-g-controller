@@ -1,4 +1,24 @@
-# M-Vave Tank-G Controller (`tank-g-controller`)
+<div align="center">
+
+# 🎸 M-Vave Tank-G Controller
+
+**Controle total da pedaleira M-Vave Tank-G pelo computador, com GUI, CLI e criação de timbres por IA.**
+
+![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52?logo=qt&logoColor=white)
+![Gemini](https://img.shields.io/badge/IA-Gemini-8E75B2?logo=googlegemini&logoColor=white)
+![Tests](https://img.shields.io/badge/testes-25%20passando-brightgreen?logo=pytest&logoColor=white)
+![License](https://img.shields.io/github/license/AlexandreTonin/tank-g-controller)
+
+[Funcionalidades](#-funcionalidades-suportadas) •
+[Instalação](#️-instalação-e-execução) •
+[CLI](#-uso-via-linha-de-comando-cli) •
+[Protocolo](#-protocolo-midi-sysex-decifrado) •
+[Documentação](#-documentação)
+
+</div>
+
+---
 
 Controlador desktop moderno em **PySide6 (Qt Widgets)** e interface via linha de comando (CLI) em Python para a pedaleira multi-efeitos **M-Vave (Cuvave) Tank-G** via USB-MIDI SysEx.
 
@@ -36,17 +56,16 @@ O projeto foi inteiramente refatorado para o padrão arquitetural **Model-View-V
 └────────────────────────────┘ └───────────┬─────────────┘
                                            │
                                ┌───────────▼─────────────┐
-                               │     Camada de Serviços  │
+                               │   Camada de Serviços    │
                                │ - GeminiPresetService   │
                                │ - PresetValidator/Clamp │
                                │ - SysExCodec (Checksum) │
-                               │ - 25 Testes Automatizados│
                                └─────────────────────────┘
 ```
 
 ### Estrutura de Pastas
 ```
-tankg/
+tank-g-controller/
 ├── tankg/                        # Pacote Python principal
 │   ├── core/                     # Constantes, modelos de amp, cabs e módulos
 │   ├── model/                    # Dataclasses puras (PedalState, Preset, AIPresetResponse)
@@ -55,9 +74,11 @@ tankg/
 │   ├── view/                     # PySide6 Widgets (AITonePanel, RotaryKnob, MainWindow)
 │   └── cli/                      # Interface de terminal (CLI com comando ai)
 ├── tests/                        # 25 testes automatizados com pytest (offline)
+├── docs/                         # Guia de parâmetros e diário da engenharia reversa
+├── captures/                     # Capturas USB (Wireshark/USBPcap) usadas na engenharia reversa
 ├── main.py                       # Ponto de entrada direto para a GUI
 ├── tankg.py                      # Wrapper com compatibilidade retroativa para CLI e GUI
-└── requirements.txt              # Dependências (google-genai, pydantic, PySide6, pytest, mido)
+└── requirements.txt              # Dependências (mido, python-rtmidi, PySide6, google-genai, pydantic, pytest)
 ```
 
 ---
@@ -79,7 +100,7 @@ tankg/
 - **Gravação Persistente na EEPROM:**
   - Salva o preset atual ou qualquer preset de destino diretamente na memória permanente do pedal (`0x69`).
 - **Módulo de Pré-amplificador (AMP):**
-  - 9 Modelos de amplificadores clássicos (VOX AC30, Twin Reverb, Bogner, Plexi, JCM800, 5150, Powerball, Dual Rectifier).
+  - 9 Modelos de amplificadores clássicos (VOX AC30, Fender '65 Twin Reverb, Bogner Shiva, Marshall JTM45, Plexi 100, JCM800, EVH 5150, ENGL Powerball, Mesa Dual Rectifier).
   - Ajustes de equalização: `gain`, `treble`, `middle`, `bass` e `volume` (`0 a 100`).
 - **Módulo de Modulação (MOD):**
   - Seleção entre **Chorus**, **Phaser** e **Tremolo** (`1 a 40`).
@@ -108,22 +129,36 @@ cd tank-g-controller
 
 # Criar e ativar ambiente virtual
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1      # Windows (PowerShell)
+source .venv/bin/activate         # Linux / macOS
 
 # Instalar dependências
 pip install -r requirements.txt
 ```
 
-### 2. Abrir a Interface Gráfica (GUI)
+### 2. Configurar a Chave da API Gemini (opcional, só para o AI Tone Crafter)
+
+A chave é procurada nesta ordem: valor informado na interface, variável de ambiente `GEMINI_API_KEY` e, por fim, o arquivo local `config.json` (ignorado pelo Git).
+
+```bash
+# Windows (PowerShell)
+$env:GEMINI_API_KEY = "sua-chave"
+# Linux / macOS
+export GEMINI_API_KEY="sua-chave"
+```
+
+### 3. Abrir a Interface Gráfica (GUI)
 
 Execute qualquer um dos comandos abaixo:
 ```bash
 python main.py
 # ou
 python tankg.py
+# ou
+python -m tankg
 ```
 
-### 3. Executar a Suíte de Testes Automatizados
+### 4. Executar a Suíte de Testes Automatizados
 
 O projeto inclui testes de unidade cobrindo todas as fórmulas matemáticas e codecs de bits sem precisar do pedal conectado:
 ```bash
@@ -185,25 +220,38 @@ Todas as mensagens SysEx da M-Vave iniciam com o cabeçalho:
 
 ### 1. Preset em Tempo Real (Comando `0x31` - 36 bytes)
 Os 12 parâmetros são multiplicados por 2, empacotados em grupos de 7 bits (bytes 18 a 32), e o checksum de 14 bits obedece à fórmula:
-$$\mathbf{params\_sum} = \text{type} + \text{gain} + \text{treble} + \text{middle} + \text{bass} + \text{volume} + \text{mod\_fx} + \text{mod\_speed} + \text{dly\_mix} + \text{dly\_time} + \text{rev\_decay} + \text{rev\_mix}$$
-$$\mathbf{ck} = (211 - \mathbf{params\_sum}) \pmod{256}$$
-$$\mathbf{ck_1} = \mathbf{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\mathbf{ck} \gg 7) \ \& \ 0x7F$$
+```
+params_sum = type + gain + treble + middle + bass + volume
+           + mod_fx + mod_speed + dly_mix + dly_time + rev_decay + rev_mix
+ck  = (211 - params_sum) % 256
+ck1 = ck & 0x7F
+ck2 = (ck >> 7) & 0x7F
+```
 
 ### 2. Bypass de Módulos (Comando `0x49`, Sub-registro `0x11`)
 - IDs: `AMP = 0`, `MOD = 1`, `DLY = 2`, `REV = 3`
 - Estado: `0 = Bypass / Desligado`, `1 = Ativo / Ligado`
-$$\mathbf{ck_1} = 0x54 - 2 \times \text{mod\_id} - 2 \times \text{state}, \quad \mathbf{ck_2} = 0x03$$
+```
+ck1 = 0x54 - 2 * mod_id - 2 * state
+ck2 = 0x03
+```
 
 ### 3. Troca de Preset (Comando `0x49`, Sub-registro `0x1E`)
-Para o ID interno do preset de `0` a `35` (onde $0 = 1A$ e $35 = 9D$):
-$$\mathbf{ck} = (50 - 2 \times \text{preset\_id}) \pmod{256}$$
-$$\mathbf{ck_1} = \mathbf{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\mathbf{ck} \gg 7) \ \& \ 0x7F$$
+Para o ID interno do preset de `0` a `35` (onde `0 = 1A` e `35 = 9D`):
+```
+ck  = (50 - 2 * preset_id) % 256
+ck1 = ck & 0x7F
+ck2 = (ck >> 7) & 0x7F
+```
 
 ### 4. Gravação na Memória EEPROM (Comando `0x69` - 44 bytes)
 Grava os 21 bytes de parâmetros no endereço de offset específico daquele preset:
-$$\text{offset} = \text{preset\_id} \times 21 + 2$$
-$$\mathbf{ck} = (230 - \sum_{i=0}^{20} \text{field}_i - \text{offset}) \pmod{256}$$
-$$\mathbf{ck_1} = \mathbf{ck} \ \& \ 0x7F, \quad \mathbf{ck_2} = (\mathbf{ck} \gg 7) \ \& \ 0x7F$$
+```
+offset = preset_id * 21 + 2
+ck  = (230 - sum(field[0..20]) - offset) % 256
+ck1 = ck & 0x7F
+ck2 = (ck >> 7) & 0x7F
+```
 Logo em seguida, o controlador envia um comando de flush (`0x41`) e a troca para o próprio preset (`0x49`) para que o pedal recarregue a memória flash.
 
 ---
@@ -215,5 +263,13 @@ No Windows, os drivers de áudio/MIDI (WinMM) operam em modo de **acesso exclusi
 
 ---
 
+## 📚 Documentação
+
+- [Guia de parâmetros e módulos](docs/guia-de-parametros.md): amps, gabinetes, setores de efeito e footswitches.
+- [Diário de engenharia reversa](docs/engenharia-reversa.md): como cada comando SysEx foi capturado e decifrado.
+- [`captures/`](captures): arquivos `.pcapng` originais, abríveis no Wireshark.
+
+---
+
 ## 📄 Licença
-Distribuído sob a licença MIT. Criado para a comunidade de guitarristas e entusiastas de áudio.
+Distribuído sob a licença [MIT](LICENSE). Criado para a comunidade de guitarristas e entusiastas de áudio.

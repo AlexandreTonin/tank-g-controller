@@ -2,6 +2,8 @@
 
 Este documento reúne todas as especificações técnicas, slots de amplificadores, gabinetes (IR CAB), módulos de efeito, setores de ajuste e funções dos footswitches para uso tanto no hardware quanto no aplicativo (M-EFCS).
 
+> Para os comandos MIDI correspondentes, veja o [README](../README.md) e o [diário de engenharia reversa](engenharia-reversa.md).
+
 ---
 
 ## 1. Módulo AMP (Modelos de Pré-amplificador)
